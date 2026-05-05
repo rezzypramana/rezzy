@@ -1,0 +1,140 @@
+{
+  "entities": {
+    "Asset": {
+      "title": "Asset",
+      "description": "Fixed assets owned by the company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "barcode": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "division": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "in-use", "maintenance", "retired"] },
+        "location": { "type": "string" },
+        "purchaseDate": { "type": "string", "format": "date-time" },
+        "purchasePrice": { "type": "number" },
+        "currentPrice": { "type": "number" },
+        "lastMaintenance": { "type": "string", "format": "date-time" },
+        "nextMaintenance": { "type": "string", "format": "date-time" },
+        "assignedTo": { "type": "string" },
+        "image": { "type": "string" },
+        "description": { "type": "string" },
+        "landCertificateNumber": { "type": "string" },
+        "landOwnershipStatus": { "type": "string" },
+        "landCertificateType": { "type": "string", "enum": ["SHM", "SHGB", "SHP", "Lainnya"] },
+        "landCertificateCondition": { "type": "string", "enum": ["Aman", "Dijaminkan", "Dalam Sengketa"] },
+        "buildingNIB": { "type": "string" },
+        "buildingFloors": { "type": "number" },
+        "buildingArea": { "type": "number" },
+        "buildingPermitNumber": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "barcode", "category", "status", "division"]
+    },
+    "Inventory": {
+      "title": "Inventory",
+      "description": "Consumable items or stock",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "barcode": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "division": { "type": "string" },
+        "quantity": { "type": "number" },
+        "minQuantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "purchasePrice": { "type": "number" },
+        "currentPrice": { "type": "number" },
+        "location": { "type": "string" },
+        "lastRestock": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "barcode", "quantity", "unit", "division"]
+    },
+    "MaintenanceRecord": {
+      "title": "Maintenance Record",
+      "description": "History of maintenance performed on an asset",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "assetId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "cost": { "type": "number" },
+        "performedBy": { "type": "string" }
+      },
+      "required": ["assetId", "date", "type"]
+    },
+    "User": {
+      "title": "User",
+      "description": "App user profile and permissions",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "division": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "division_admin", "viewer"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "System-wide activity logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetName": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "action", "timestamp"]
+    },
+    "Setting": {
+      "title": "System Setting",
+      "description": "Branding and global configurations",
+      "type": "object",
+      "properties": {
+        "orgName": { "type": "string" },
+        "orgLogo": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "assets": {
+      "schema": "Asset",
+      "description": "Collection of company assets"
+    },
+    "inventory": {
+      "schema": "Inventory",
+      "description": "Collection of inventory items"
+    },
+    "maintenance": {
+      "schema": "MaintenanceRecord",
+      "description": "Collection of maintenance records"
+    },
+    "users": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "auditLogs": {
+      "schema": "AuditLog",
+      "description": "System activity logs"
+    },
+    "settings": {
+      "schema": "Setting",
+      "description": "Global branding and config"
+    }
+  }
+}

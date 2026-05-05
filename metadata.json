@@ -1,0 +1,12 @@
+{
+  "name": "Sinergi Assets",
+  "description": "Enterprise Asset & Inventory Management for Large Organizations",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "barcode_scanning",
+    "inventory_tracking",
+    "reporting"
+  ]
+}

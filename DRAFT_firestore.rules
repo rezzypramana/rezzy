@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidAsset(data) {
+      return data.keys().hasAll(['name', 'barcode', 'category', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.barcode is string && data.barcode.size() > 0 && data.barcode.size() <= 100 &&
+             data.category is string &&
+             data.status in ['available', 'in-use', 'maintenance', 'retired'] &&
+             (data.get('price', 0) is number) &&
+             (!data.hasAny(['createdAt']) || data.createdAt == request.time) &&
+             (!data.hasAny(['updatedAt']) || data.updatedAt == request.time);
+    }
+
+    function isValidInventory(data) {
+      return data.keys().hasAll(['name', 'barcode', 'quantity', 'unit']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.barcode is string && data.barcode.size() > 0 && data.barcode.size() <= 100 &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.unit is string &&
+             (!data.hasAny(['createdAt']) || data.createdAt == request.time) &&
+             (!data.hasAny(['updatedAt']) || data.updatedAt == request.time);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role in ['admin', 'viewer'];
+    }
+
+    // --- Collections ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidUser(incoming());
+      allow update: if isAdmin() && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['role', 'displayName']);
+    }
+
+    match /assets/{assetId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidAsset(incoming()) && isValidId(assetId);
+      allow update: if isAdmin() && isValidAsset(incoming()) &&
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidInventory(incoming()) && isValidId(itemId);
+      allow update: if isSignedIn() && isValidInventory(incoming()) &&
+                    // Viewers can only update quantity (restock/use) - if app allows that
+                    // But let's restrict to admin for sensitive changes
+                    (isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /maintenance/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidId(recordId) && 
+                    exists(/databases/$(database)/documents/assets/$(incoming().assetId));
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

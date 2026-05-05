@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'viewer') == 'super_admin';
+    }
+
+    function isDivisionAdmin(division) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'viewer') == 'division_admin' && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('division', '') == division;
+    }
+
+    function canWriteAsset(data) {
+      return isSuperAdmin() || isDivisionAdmin(data.division);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidAsset(data) {
+      return data.keys().hasAll(['name', 'barcode', 'category', 'status', 'division']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.barcode is string && data.barcode.size() > 0 && data.barcode.size() <= 100 &&
+             data.division is string &&
+             data.category is string &&
+             data.status in ['available', 'in-use', 'maintenance', 'retired'] &&
+             (data.get('purchasePrice', 0) is number) &&
+             (data.get('currentPrice', 0) is number) &&
+             (!data.hasAny(['createdAt']) || data.createdAt == request.time) &&
+             (!data.hasAny(['updatedAt']) || data.updatedAt == request.time);
+    }
+
+    function isValidInventory(data) {
+      return data.keys().hasAll(['name', 'barcode', 'quantity', 'unit', 'division']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.barcode is string && data.barcode.size() > 0 && data.barcode.size() <= 100 &&
+             data.division is string &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.unit is string &&
+             (!data.hasAny(['createdAt']) || data.createdAt == request.time) &&
+             (!data.hasAny(['updatedAt']) || data.updatedAt == request.time);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role in ['super_admin', 'division_admin', 'viewer'];
+    }
+
+    // --- Collections ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn() && isValidUser(incoming()) && (
+        incoming().role == 'viewer' || 
+        request.auth.token.email == 'lastbrilian@gmail.com'
+      );
+      allow update: if isSuperAdmin() && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['role', 'displayName', 'division']);
+    }
+
+    match /assets/{assetId} {
+      // Public read for barcode info (Ideally limit fields, but Firestore rules are coarse)
+      allow get: if true; 
+      allow list: if isSignedIn() || (request.query.limit <= 5); // Allow small lists for searches
+      
+      allow create: if isValidAsset(incoming()) && isValidId(assetId) && canWriteAsset(incoming());
+      allow update: if isValidAsset(incoming()) && (
+        isSuperAdmin() || 
+        (isDivisionAdmin(existing().division) && incoming().division == existing().division)
+      ) && incoming().createdAt == existing().createdAt;
+      allow delete: if isSuperAdmin() || (isSignedIn() && isDivisionAdmin(existing().division));
+    }
+
+    match /inventory/{itemId} {
+      allow get: if true;
+      allow list: if isSignedIn();
+      
+      allow create: if isValidInventory(incoming()) && isValidId(itemId) && canWriteAsset(incoming());
+      allow update: if (
+        isSuperAdmin() || 
+        (isDivisionAdmin(existing().division) && incoming().division == existing().division) ||
+        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'updatedAt']))
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && isDivisionAdmin(existing().division));
+    }
+
+    match /maintenance/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if (isSuperAdmin() || isDivisionAdmin(incoming().division)) && isValidId(recordId);
+      allow update: if isSuperAdmin() || isDivisionAdmin(existing().division);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && incoming().uid == request.auth.uid;
+    }
+
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+  }
+}
